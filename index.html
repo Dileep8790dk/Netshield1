@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NetShield – Phishing Detection System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{
+background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+font-family:Segoe UI,Arial;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+min-height:100vh;
+}
+.container{
+width:440px;
+background:rgba(255,255,255,0.08);
+padding:20px;
+border-radius:18px;
+backdrop-filter:blur(10px);
+box-shadow:0 10px 30px rgba(0,0,0,0.6);
+}
+h2{text-align:center;color:#4ade80;}
+input,textarea,select,button{
+width:100%;
+padding:10px;
+margin:6px 0;
+border-radius:8px;
+border:none;
+}
+button{
+background:#4ade80;
+font-weight:600;
+cursor:pointer;
+}
+button:hover{background:#22c55e;}
+.result{padding:10px;margin-top:8px;border-radius:8px;}
+.safe{background:#166534;}
+.warning{background:#854d0e;}
+.danger{background:#7f1d1d;}
+.hidden{display:none;}
+nav{display:flex;justify-content:space-between;margin-bottom:10px;}
+nav button{width:24%;font-size:12px;}
+footer{text-align:center;font-size:13px;color:#ccc;margin-top:10px;}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h2>🛡 NetShield</h2>
+
+<!-- LOGIN -->
+<div id="login">
+<input id="luser" placeholder="User ID">
+<input id="lpass" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<button onclick="show('signup')">Signup</button>
+</div>
+
+<!-- SIGNUP -->
+<div id="signup" class="hidden">
+<input id="suser" placeholder="New User ID">
+<input id="spass" type="password" placeholder="Password">
+<button onclick="signup()">Create Account</button>
+<button onclick="show('login')">Back</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dash" class="hidden">
+
+<nav>
+<button onclick="showTab('scan')">Text</button>
+<button onclick="showTab('image')">Image</button>
+<button onclick="showTab('report')">Report</button>
+<button onclick="showTab('logs')">Logs</button>
+</nav>
+
+<!-- TEXT & LINK SCAN -->
+<div id="scan">
+<textarea id="scanText" placeholder="Paste suspicious text or URL here"></textarea>
+<button onclick="scanText()">Check</button>
+<div id="scanRes" class="result hidden"></div>
+</div>
+
+<!-- IMAGE SCAN -->
+<div id="image" class="hidden">
+<input type="file" id="img" accept="image/*">
+<button onclick="scanImage()">Scan Image</button>
+<div id="imgRes" class="result hidden"></div>
+</div>
+
+<!-- REPORT -->
+<div id="report" class="hidden">
+<select id="rtype">
+<option>Phishing Message</option>
+<option>Fake Link</option>
+<option>Scam Image</option>
+<option>Financial Fraud</option>
+</select>
+<textarea id="rdesc" placeholder="Describe the incident"></textarea>
+<button onclick="saveReport()">Submit Report</button>
+</div>
+
+<!-- LOGS -->
+<div id="logs" class="hidden">
+<div id="logData"></div>
+</div>
+
+<footer>NetShield © Cyber Security Project</footer>
+</div>
+
+<script>
+/* ================= DATABASE ================= */
+let db;
+const req = indexedDB.open("NetShieldDB",1);
+req.onupgradeneeded = e => {
+db = e.target.result;
+db.createObjectStore("users",{keyPath:"user"});
+db.createObjectStore("reports",{autoIncrement:true});
+db.createObjectStore("logs",{autoIncrement:true});
+};
+req.onsuccess = e => db = e.target.result;
+
+/* ================= UI ================= */
+function show(id){
+["login","signup","dash"].forEach(x=>document.getElementById(x).classList.add("hidden"));
+document.getElementById(id).classList.remove("hidden");
+}
+function showTab(id){
+["scan","image","report","logs"].forEach(x=>document.getElementById(x).classList.add("hidden"));
+document.getElementById(id).classList.remove("hidden");
+if(id==="logs") loadLogs();
+}
+
+/* ================= AUTH ================= */
+function signup(){
+let tx=db.transaction("users","readwrite");
+tx.objectStore("users").add({user:suser.value,pass:spass.value});
+alert("User registered successfully");
+show("login");
+}
+function login(){
+let tx=db.transaction("users","readonly");
+let g=tx.objectStore("users").get(luser.value);
+g.onsuccess=()=>{
+if(g.result && g.result.pass===lpass.value){
+show("dash");
+}else alert("Invalid login");
+};
+}
+
+/* ================= TEXT & LINK SCANNER ================= */
+function scanText(){
+const input=document.getElementById("scanText").value.trim();
+const res=document.getElementById("scanRes");
+
+if(input===""){alert("Enter text or link");return;}
+
+res.classList.remove("hidden");
+
+const urlPattern=/(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+const phishingWords=["verify","urgent","blocked","otp","login","update","password","bank","reward","free","click"];
+const shortUrls=["bit.ly","tinyurl","t.co","goo.gl","ow.ly"];
+
+let urls=input.match(urlPattern);
+let isPhishing=false;
+
+if(urls){
+urls.forEach(url=>{
+shortUrls.forEach(s=>{if(url.includes(s))isPhishing=true;});
+if(/\d+\.\d+\.\d+\.\d+/.test(url))isPhishing=true;
+});
+if(isPhishing){
+res.className="result danger";
+res.innerHTML="🚨 <b>Phishing Link Detected</b>";
+saveLog("Link Scan","PHISHING LINK");
+}else{
+res.className="result warning";
+res.innerHTML="⚠️ <b>Link Found – Verify Domain</b>";
+saveLog("Link Scan","LINK FOUND");
+}
+return;
+}
+
+phishingWords.forEach(w=>{
+if(input.toLowerCase().includes(w))isPhishing=true;
+});
+
+if(isPhishing){
+res.className="result danger";
+res.innerHTML="🚨 <b>Phishing Message Detected</b>";
+saveLog("Text Scan","PHISHING TEXT");
+}else{
+res.className="result safe";
+res.innerHTML="✅ <b>Safe Content</b>";
+saveLog("Text Scan","SAFE TEXT");
+}
+}
+
+/* ================= IMAGE SCANNER ================= */
+function scanImage(){
+let f=img.files[0];
+if(!f){alert("Upload image");return;}
+imgRes.classList.remove("hidden");
+let name=f.name.toLowerCase();
+let status="SAFE";
+if(name.includes("bank")||name.includes("otp")||name.includes("offer")){
+status="SCAM IMAGE";
+imgRes.className="result danger";
+imgRes.innerHTML="🚨 Scam Image Detected";
+}else{
+imgRes.className="result safe";
+imgRes.innerHTML="✅ Image Safe";
+}
+saveLog("Image Scan",status);
+}
+
+/* ================= REPORT ================= */
+function saveReport(){
+let tx=db.transaction("reports","readwrite");
+tx.objectStore("reports").add({
+type:rtype.value,
+desc:rdesc.value,
+time:new Date().toLocaleString()
+});
+alert("Report submitted successfully");
+rdesc.value="";
+}
+
+/* ================= LOGS ================= */
+function saveLog(type,status){
+let tx=db.transaction("logs","readwrite");
+tx.objectStore("logs").add({
+type,status,time:new Date().toLocaleString()
+});
+}
+function loadLogs(){
+let tx=db.transaction("logs","readonly");
+let g=tx.objectStore("logs").getAll();
+g.onsuccess=()=>{
+logData.innerHTML=g.result.map(l=>
+`<p>🔹 ${l.type} – <b>${l.status}</b><br><small>${l.time}</small></p>`
+).join("");
+};
+}
+</script>
+
+</body>
+  </html>
